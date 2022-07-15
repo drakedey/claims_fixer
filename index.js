@@ -16,6 +16,7 @@
 // ];
 
 const client = require('./connection');
+const fs = require('fs')
 
 const tables = [
   {
@@ -116,7 +117,10 @@ const tables = [
     targetTableFields: ['id', 'responsible_area_id', 'claim_type_id', 'tenant_uuid'],
     tenantTargetTable: '',
     tenantTargetTableFields: []
-  },
+  }
+]
+
+const compoundTables = [
   {
     name: 'tuten_claim_type_typification',
     fields: ['id', 'responsible_area_id', 'claim_type_id', 'claim_typification_id', 'tenant_uuid'],
@@ -135,23 +139,23 @@ const tables = [
     tenantTargetTable: '',
     tenantTargetTableFields: []
   },
-  // {
-  //   name: 'tuten_claim',
-  //   fields: ['id', 'customer_id', 'beneficiary_type', 'priority_id','compensation_type_id',
-  //   'responsible_area_id', 'claim_type_id', 'claim_typification_id', 'claim_sub_typification_id', 'response_type_id',
-  //   'action_type_id', 'payment_type_id', 'claim_status_id', 'description', 'compensation_apply', 'account_number',
-  //   'beneficiary_name', 'beneficiary_document_number', 'beneficiary_document_type', 'monetary_amount', 'monetary_unit',
-  //   'status_update_date', 'created_date', 'business_unit_uuid', 'coming', 'claim_proceeds', 'is_from', 'case_number', 'tenant_uuid'],
-  //   values: [],
-  //   targetTable: 'claim',
-  //   targetTableFields: ['id', 'customer_id', 'beneficiary_type', 'priority_id','compensation_type_id',
-  //   'responsible_area_id', 'claim_type_id', 'claim_typification_id', 'claim_sub_typification_id', 'response_type_id',
-  //   'action_type_id', 'payment_type_id', 'claim_status_id', 'description', 'compensation_apply', 'account_number',
-  //   'beneficiary_name', 'beneficiary_document_number', 'beneficiary_document_type', 'monetary_amount', 'monetary_unit',
-  //   'status_update_date', 'created_date', 'business_unit_uuid', 'coming', 'claim_proceeds', 'is_from', 'case_number', 'tenant_uuid'],
-  //   tenantTargetTable: '',
-  //   tenantTargetTableFields: []
-  // },
+  {
+    name: 'tuten_claim',
+    fields: ['id', 'customer_id', 'beneficiary_type', 'priority_id','compensation_type_id',
+    'responsible_area_id', 'claim_type_id', 'claim_typification_id', 'claim_sub_typification_id', 'response_type_id',
+    'action_type_id', 'payment_type_id', 'claim_status_id', 'description', 'compensation_apply', 'account_number',
+    'beneficiary_name', 'beneficiary_document_number', 'beneficiary_document_type', 'monetary_amount', 'monetary_unit',
+    'status_update_date', 'created_date', 'business_unit_uuid', 'coming', 'claim_proceeds', 'is_from', 'case_number', 'tenant_uuid'],
+    values: [],
+    targetTable: 'claim',
+    targetTableFields: ['id', 'customer_id', 'beneficiary_type', 'priority_id','compensation_type_id',
+    'responsible_area_id', 'claim_type_id', 'claim_typification_id', 'claim_sub_typification_id', 'response_type_id',
+    'action_type_id', 'payment_type_id', 'claim_status_id', 'description', 'compensation_apply', 'account_number',
+    'beneficiary_name', 'beneficiary_document_number', 'beneficiary_document_type', 'monetary_amount', 'monetary_unit',
+    'status_update_date', 'created_date', 'business_unit_uuid', 'coming', 'claim_proceeds', 'is_from', 'case_number', 'tenant_uuid'],
+    tenantTargetTable: '',
+    tenantTargetTableFields: []
+  },
 ]
 
 const resultTable = tables.map(async table => {
@@ -170,12 +174,24 @@ const resultTable = tables.map(async table => {
   return {...table, values};
 })
 
+const dumpForMaster = compoundTables.map(async table => {
+  const query = `SELECT * FROM ${table.name};`
+  const result = await client.query(query);
+  const dumpQuery = result.rows.map(()=>{});
+})
+
+// Se tiene que "dumpear la data como esta actualmente (INSERTS)"
+// Se tienen que ejecutar estos inserts en la tabla target
+// Se tiene que eliminar los constraint de la tabla target
+// Se tiene que hacer el update de los values en las llaves foraneas, cambiar el id foraneo (oldIds) por el id
+// Volver a armar los constraint.
+
 Promise.all(resultTable).then(result => {
-  result.map(obj => {
+  const queryResult = result.map(obj => {
     let firstQuery = `INSERT INTO ${obj.targetTable} (${obj.targetTableFields.join(', ')}) VALUES `
     let secondQuery = `INSERT INTO ${obj.tenantTargetTable} (${obj.tenantTargetTableFields.join(', ')}) VALUES `
     let index = 1;
-    obj.values.map((rows) => {
+    obj.values.forEach((rows) => {
       firstQuery = firstQuery.concat('(', rows.id, ', ',"'", rows.name, "'", ")", ',')
       
       rows.tenantUUid.map((tenant) => {
@@ -184,10 +200,13 @@ Promise.all(resultTable).then(result => {
     })
     console.log(`\n############### ${obj.targetTable} #####################\n`)
     // 1er Query
-    console.log('1er Query => ', firstQuery.slice(0, -1).concat(';'))
+    console.log('1er Query => ', firstQuery.slice(0, -1).concat(';\n'))
     // 2do Query
-    console.log('2do Query => ', secondQuery.slice(0, -1).concat(';'))
+    console.log('2do Query => ', secondQuery.slice(0, -1).concat(';\n'))
+    return `${firstQuery}\n${secondQuery}`
   })
+  .join('');
+  fs.writeFileSync('./output.sql', queryResult);
 });
 
 
